@@ -13,7 +13,7 @@ from mmcv.cnn.bricks.registry import (
     TRANSFORMER_LAYER_SEQUENCE,
 )
 from mmcv.cnn.bricks.transformer import TransformerLayerSequence
-from mmcv.runner import force_fp32, auto_fp16
+from third_party.bev_mmdet3d.models.compat import force_fp32, auto_fp16
 import numpy as np
 import torch
 from mmcv.utils import TORCH_VERSION, digit_version

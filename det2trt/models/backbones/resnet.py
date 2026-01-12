@@ -3,13 +3,25 @@ import warnings
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_conv_layer, build_norm_layer, build_plugin_layer
-from mmcv.runner import BaseModule
+try:
+    from mmengine.model import BaseModule
+except ImportError:
+    from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from mmdet.models.builder import BACKBONES
+try:
+    from mmdet.registry import MODELS as BACKBONES
+except ImportError:
+    from mmdet.models.builder import BACKBONES
 from mmdet.models.utils import ResLayer
 
-import pytorch_quantization.nn as quant_nn
+try:
+    import pytorch_quantization.nn as quant_nn
+    HAS_QUANT = True
+except ImportError:
+    HAS_QUANT = False
+    quant_nn = None
+    print("Warning: pytorch_quantization not available in resnet.py")
 
 
 class BasicBlock(BaseModule):
@@ -59,9 +71,12 @@ class BasicBlock(BaseModule):
         self.dilation = dilation
         self.with_cp = with_cp
 
-        self.residual_quantizer = quant_nn.TensorQuantizer(
-            quant_nn.QuantConv2d.default_quant_desc_input
-        )
+        if HAS_QUANT and quant_nn is not None:
+            self.residual_quantizer = quant_nn.TensorQuantizer(
+                quant_nn.QuantConv2d.default_quant_desc_input
+            )
+        else:
+            self.residual_quantizer = None
 
     @property
     def norm1(self):
@@ -89,7 +104,10 @@ class BasicBlock(BaseModule):
             if self.downsample is not None:
                 identity = self.downsample(x)
 
-            out += self.residual_quantizer(identity)
+            if self.residual_quantizer is not None:
+                out += self.residual_quantizer(identity)
+            else:
+                out += identity
 
             return out
 
@@ -234,9 +252,12 @@ class Bottleneck(BaseModule):
                 planes * self.expansion, self.after_conv3_plugins
             )
 
-        self.residual_quantizer = quant_nn.TensorQuantizer(
-            quant_nn.QuantConv2d.default_quant_desc_input
-        )
+        if HAS_QUANT and quant_nn is not None:
+            self.residual_quantizer = quant_nn.TensorQuantizer(
+                quant_nn.QuantConv2d.default_quant_desc_input
+            )
+        else:
+            self.residual_quantizer = None
 
     def make_block_plugins(self, in_channels, plugins):
         """make plugins for block.
@@ -309,7 +330,10 @@ class Bottleneck(BaseModule):
             if self.downsample is not None:
                 identity = self.downsample(x)
 
-            out += self.residual_quantizer(identity)
+            if self.residual_quantizer is not None:
+                out += self.residual_quantizer(identity)
+            else:
+                out += identity
 
             return out
 

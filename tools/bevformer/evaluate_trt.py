@@ -7,7 +7,12 @@ import mmcv
 import copy
 import numpy as np
 from mmcv import Config
-from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+
+# Use our own plugin loader instead of mmdeploy
+try:
+    from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+except ImportError:
+    from det2trt.utils.plugin_loader import load_tensorrt_plugin
 
 import sys
 
@@ -64,6 +69,28 @@ def main():
         locals()[key] = default_shapes[key]
 
     dataset = build_dataset(cfg=config.data.val)
+    
+    # Get mini_val sample tokens for filtering
+    from nuscenes import NuScenes
+    from nuscenes.utils import splits
+    nusc = NuScenes(version='v1.0-mini', dataroot='data/nuscenes', verbose=False)
+    mini_val_scenes = splits.mini_val
+    mini_val_sample_tokens = set()
+    for scene in nusc.scene:
+        if scene['name'] in mini_val_scenes:
+            sample_token = scene['first_sample_token']
+            while sample_token:
+                mini_val_sample_tokens.add(sample_token)
+                sample = nusc.get('sample', sample_token)
+                sample_token = sample['next']
+    
+    # Filter dataset to only mini_val samples
+    original_data_infos = dataset.data_infos
+    filtered_data_infos = [info for info in original_data_infos if info['token'] in mini_val_sample_tokens]
+    dataset.data_infos = filtered_data_infos
+    print(f'Filtering dataset to {len(dataset.data_infos)} mini_val samples (from {len(original_data_infos)} total)')
+    
+    # Rebuild dataloader with filtered dataset
     loader = build_dataloader(
         dataset, samples_per_gpu=1, workers_per_gpu=6, shuffle=False, dist=False
     )
@@ -132,6 +159,15 @@ def main():
                 inp.host = lidar2img.reshape(-1).astype(np.float32)
             else:
                 raise RuntimeError(f"Cannot find input name {inp.name}.")
+        
+        # Debug: check input values for first sample
+        if len(bbox_results) == 0:
+            print("\n=== Checking inputs ===")
+            for inp in inputs:
+                data = inp.host[:10] if len(inp.host) > 10 else inp.host
+                print(f"Input {inp.name}: shape={inp.host.shape}, has_nan={np.isnan(inp.host).any()}, "
+                      f"min={np.nanmin(inp.host):.4f}, max={np.nanmax(inp.host):.4f}")
+            print("="*50)
 
         trt_outputs, t = do_inference(
             context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream
@@ -146,12 +182,44 @@ def main():
         prev_frame_info["prev_angle"] = tmp_angle
 
         trt_outputs = {k: torch.from_numpy(v) for k, v in trt_outputs.items()}
+        
+        # Debug: check TRT output values
+        if len(bbox_results) == 0:
+            for k, v in trt_outputs.items():
+                print(f"TRT output {k}: shape={v.shape}, min={v.min():.4f}, max={v.max():.4f}, mean={v.mean():.4f}")
 
-        bbox_results.extend(pth_model.post_process(**trt_outputs, img_metas=img_metas))
+        result = pth_model.post_process(**trt_outputs, img_metas=img_metas)
+        
+        # Debug: check post-process output
+        if len(bbox_results) == 0:
+            print(f"Post-process result: {len(result[0]['pts_bbox']['boxes_3d'])} boxes")
+            if len(result[0]['pts_bbox']['boxes_3d']) > 0:
+                print(f"  Scores: min={result[0]['pts_bbox']['scores_3d'].min():.4f}, max={result[0]['pts_bbox']['scores_3d'].max():.4f}")
+        
+        bbox_results.extend(result)
         ts.append(t)
 
         for _ in range(len(img)):
             prog_bar.update()
+    
+    print(f'\nTotal results: {len(bbox_results)}')
+    print(f'Non-None results: {sum(1 for r in bbox_results if r is not None)}')
+    
+    # Check how many results have detections
+    num_with_boxes = sum(1 for r in bbox_results if len(r['pts_bbox']['boxes_3d']) > 0)
+    total_boxes = sum(len(r['pts_bbox']['boxes_3d']) for r in bbox_results)
+    print(f'Results with boxes: {num_with_boxes}/{len(bbox_results)}')
+    print(f'Total boxes across all results: {total_boxes}')
+    
+    if bbox_results:
+        print(f'First result type: {type(bbox_results[0])}')
+        print(f'First result keys: {bbox_results[0].keys() if isinstance(bbox_results[0], dict) else "NOT A DICT"}')
+        # Check first result's boxes
+        first_boxes = bbox_results[0]['pts_bbox']['boxes_3d']
+        print(f'First result boxes type: {type(first_boxes)}')
+        print(f'First result num boxes: {len(first_boxes)}')
+        print(f'First result scores shape: {bbox_results[0]["pts_bbox"]["scores_3d"].shape}')
+        print(f'First result labels shape: {bbox_results[0]["pts_bbox"]["labels_3d"].shape}')
 
     metric = dataset.evaluate(bbox_results)
 

@@ -45,6 +45,28 @@ def main():
     checkpoint = load_checkpoint(model, checkpoint_file, map_location="cpu")
 
     dataset = build_dataset(cfg=config.data.val)
+    
+    # Get mini_val sample tokens for filtering
+    from nuscenes import NuScenes
+    from nuscenes.utils import splits
+    nusc = NuScenes(version='v1.0-mini', dataroot='data/nuscenes', verbose=False)
+    mini_val_scenes = splits.mini_val
+    mini_val_sample_tokens = set()
+    for scene in nusc.scene:
+        if scene['name'] in mini_val_scenes:
+            sample_token = scene['first_sample_token']
+            while sample_token:
+                mini_val_sample_tokens.add(sample_token)
+                sample = nusc.get('sample', sample_token)
+                sample_token = sample['next']
+    
+    # Filter dataset to only mini_val samples
+    original_data_infos = dataset.data_infos
+    filtered_data_infos = [info for info in original_data_infos if info['token'] in mini_val_sample_tokens]
+    dataset.data_infos = filtered_data_infos
+    print(f'Filtering dataset to {len(dataset.data_infos)} mini_val samples (from {len(original_data_infos)} total)')
+    
+    # Rebuild dataloader with filtered dataset
     loader = build_dataloader(
         dataset, samples_per_gpu=1, workers_per_gpu=6, shuffle=False, dist=False
     )
@@ -105,6 +127,13 @@ def main():
             )
             torch.cuda.synchronize()
             t2 = time.time()
+        
+        # Debug: check output values for first sample
+        if len(results) == 0:
+            print("\n=== PyTorch outputs (first sample) ===")
+            print(f"outputs_classes: shape={outputs_classes.shape}, min={outputs_classes.min():.4f}, max={outputs_classes.max():.4f}, mean={outputs_classes.mean():.4f}")
+            print(f"outputs_coords: shape={outputs_coords.shape}, min={outputs_coords.min():.4f}, max={outputs_coords.max():.4f}, mean={outputs_coords.mean():.4f}")
+            print("="*50)
 
         results.extend(
             model.module.post_process(outputs_classes, outputs_coords, img_metas)

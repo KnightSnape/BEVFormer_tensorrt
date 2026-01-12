@@ -16,7 +16,12 @@ done
 
 echo "Running on the GPU: $gpu_id"
 
-CUDA_VISIBLE_DEVICES=$gpu_id python tools/pth2onnx.py \
+# Change to repository root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$REPO_ROOT"
+
+CUDA_VISIBLE_DEVICES=$gpu_id python3 tools/pth2onnx.py \
 configs/bevformer/bevformer_tiny_trt.py \
 checkpoints/pytorch/bevformer_tiny_epoch_24.pth \
 --opset_version 13 \

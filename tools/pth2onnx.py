@@ -1,7 +1,16 @@
-from pytorch_quantization import nn as quant_nn
+try:
+    from pytorch_quantization import nn as quant_nn
+    HAS_QUANT = True
+except ImportError:
+    HAS_QUANT = False
+    print("Warning: pytorch_quantization not found. INT8 quantization will not be available.")
+
 import os
 import argparse
-from mmcv import Config
+try:
+    from mmengine import Config
+except ImportError:
+    from mmcv import Config
 
 import sys
 
@@ -40,6 +49,11 @@ def main():
     output = os.path.split(args.checkpoint)[1].split(".")[0]
 
     if args.int8:
+        if not HAS_QUANT:
+            raise ImportError(
+                "pytorch_quantization is required for INT8 quantization. "
+                "Please install it with: pip install pytorch-quantization --extra-index-url https://pypi.ngc.nvidia.com"
+            )
         quant_nn.TensorQuantizer.use_fb_fake_quant = True
     if args.flag:
         output += f"_{args.flag}"

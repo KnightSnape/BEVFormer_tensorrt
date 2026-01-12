@@ -1,0 +1,151 @@
+# Flexible Dockerfile that accepts TensorRT and CUDA versions as build arguments
+# Usage:
+#   For CUDA 11.x (use Ubuntu 20.04):
+#     docker build -f Dockerfile.flexible \
+#       --build-arg CUDA_VERSION=11.8.0 \
+#       --build-arg OS_VERSION=20.04 \
+#       --build-arg TRT_VERSION=8.5.3.1 \
+#       -t bevformer_tensorrt:cuda11 .
+#
+#   For CUDA 12.x (use Ubuntu 22.04):
+#     docker build -f Dockerfile.flexible \
+#       --build-arg CUDA_VERSION=12.6.2 \
+#       --build-arg OS_VERSION=22.04 \
+#       --build-arg TRT_VERSION=10.9.0.34 \
+#       -t bevformer_tensorrt:cuda12 .
+
+ARG CUDA_VERSION=11.8.0
+ARG OS_VERSION=20.04
+
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${OS_VERSION}
+LABEL maintainer="BEVFormer TensorRT"
+
+ARG TRT_VERSION=8.5.3.1
+ENV TRT_VERSION=${TRT_VERSION}
+SHELL ["/bin/bash", "-c"]
+
+# Setup user account
+ARG uid=1000
+ARG gid=1000
+RUN groupadd -r -f -g ${gid} trtuser && useradd -o -r -l -u ${uid} -g ${gid} -ms /bin/bash trtuser
+RUN usermod -aG sudo trtuser
+RUN echo 'trtuser:nvidia' | chpasswd
+RUN mkdir -p /workspace && chown trtuser /workspace
+
+# Required to build Ubuntu 20.04 without user prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update CUDA signing key
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub || true
+
+# Install required libraries
+RUN apt-get update && apt-get install -y software-properties-common
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    wget \
+    git \
+    pkg-config \
+    sudo \
+    ssh \
+    libssl-dev \
+    pbzip2 \
+    pv \
+    bzip2 \
+    unzip \
+    devscripts \
+    lintian \
+    fakeroot \
+    dh-make \
+    build-essential
+
+# Install python3
+RUN apt-get install -y --no-install-recommends \
+      python3 \
+      python3-pip \
+      python3-dev \
+      python3-wheel &&\
+    cd /usr/local/bin &&\
+    ln -s /usr/bin/python3 python &&\
+    ln -s /usr/bin/pip3 pip
+
+# Install TensorRT (version-flexible)
+# Note: TensorRT 10.x requires CUDA 12.x and Ubuntu 22.04
+# TensorRT 8.x works with CUDA 11.x and Ubuntu 20.04
+ARG CUDA_VERSION
+ARG OS_VERSION
+RUN CUDA_MAJOR=$(echo ${CUDA_VERSION} | cut -d. -f1,2) && \
+    TRT_MAJOR_VER=$(echo ${TRT_VERSION} | cut -d. -f1) && \
+    TRT_PKG_VER=$(echo ${TRT_VERSION} | cut -d. -f1,2,3) && \
+    UBUNTU_CODENAME=$(if [ "${OS_VERSION}" = "20.04" ]; then echo "ubuntu2004"; else echo "ubuntu2204"; fi) && \
+    \
+    echo "=== TensorRT Installation Info ===" && \
+    echo "CUDA version: ${CUDA_VERSION} (major: ${CUDA_MAJOR})" && \
+    echo "TensorRT version: ${TRT_VERSION} (major: ${TRT_MAJOR_VER})" && \
+    echo "Ubuntu: ${OS_VERSION} (${UBUNTU_CODENAME})" && \
+    echo "==================================" && \
+    \
+    # Update apt keys \
+    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/${UBUNTU_CODENAME}/x86_64/3bf863cc.pub || true && \
+    apt-get update && \
+    \
+    # Install based on TensorRT major version \
+    if [ "${TRT_MAJOR_VER}" = "10" ]; then \
+        # TensorRT 10.x uses different package names (libnvinfer10, etc.) \
+        echo "Installing TensorRT 10.x..." && \
+        v="${TRT_PKG_VER}-1+cuda${CUDA_MAJOR}" && \
+        apt-get install -y --allow-downgrades \
+            libnvinfer10=${v} \
+            libnvonnxparsers10=${v} \
+            libnvinfer-plugin10=${v} \
+            libnvinfer-dev=${v} \
+            libnvonnxparsers-dev=${v} \
+            libnvinfer-plugin-dev=${v} \
+            libnvinfer-headers-dev=${v} \
+            libnvinfer-headers-plugin-dev=${v} \
+            python3-libnvinfer=${v} || \
+        echo "Warning: Some TensorRT 10.x packages may not be available"; \
+    else \
+        # TensorRT 8.x uses libnvinfer8, etc. \
+        echo "Installing TensorRT 8.x..." && \
+        v="${TRT_PKG_VER}-1+cuda${CUDA_MAJOR}" && \
+        apt-get install -y --allow-downgrades \
+            libnvinfer8=${v} \
+            libnvonnxparsers8=${v} \
+            libnvparsers8=${v} \
+            libnvinfer-plugin8=${v} \
+            libnvinfer-dev=${v} \
+            libnvonnxparsers-dev=${v} \
+            libnvparsers-dev=${v} \
+            libnvinfer-plugin-dev=${v} \
+            python3-libnvinfer=${v} || \
+        echo "Warning: Some TensorRT 8.x packages may not be available"; \
+    fi
+
+# Install PyPI packages
+RUN pip3 install --upgrade pip
+RUN pip3 install setuptools>=41.0.0
+
+# Install CMake
+RUN cd /tmp && \
+    wget https://cmake.org/files/v3.14/cmake-3.14.4-Linux-x86_64.sh && \
+    chmod +x cmake-3.14.4-Linux-x86_64.sh && \
+    ./cmake-3.14.4-Linux-x86_64.sh --prefix=/usr/local --exclude-subdir --skip-license && \
+    rm ./cmake-3.14.4-Linux-x86_64.sh
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy project files
+COPY . /workspace/BEVFormer_tensorrt/
+
+# Set environment variables
+ENV TENSORRT_ROOT=/usr
+ENV CMAKE_TENSORRT_PATH=/usr
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH="${CUDA_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+
+USER trtuser
+
+CMD ["/bin/bash"]

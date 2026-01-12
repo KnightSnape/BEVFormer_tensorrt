@@ -3,7 +3,12 @@
 import numpy as np
 import torch
 
-from . import bev_pool_v2_ext
+try:
+    from . import bev_pool_v2_ext
+    CUDA_EXT_AVAILABLE = True
+except ImportError:
+    CUDA_EXT_AVAILABLE = False
+    print("Warning: bev_pool_v2_ext CUDA extension not available. Using PyTorch fallback (slower).")
 
 __all__ = ["bev_pool_v2"]
 

@@ -3,7 +3,14 @@ import torch
 from torch import nn as nn
 from torch.autograd import Function
 
-from . import roiaware_pool3d_ext
+try:
+    from . import roiaware_pool3d_ext
+    CUDA_EXT_AVAILABLE = True
+except ImportError:
+    CUDA_EXT_AVAILABLE = False
+    roiaware_pool3d_ext = None
+    print("Warning: roiaware_pool3d_ext not available")
+
 
 
 class RoIAwarePool3d(nn.Module):

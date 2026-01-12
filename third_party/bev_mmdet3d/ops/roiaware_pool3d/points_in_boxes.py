@@ -1,6 +1,12 @@
 import torch
 
-from . import roiaware_pool3d_ext
+try:
+    from . import roiaware_pool3d_ext
+    CUDA_EXT_AVAILABLE = True
+except ImportError:
+    CUDA_EXT_AVAILABLE = False
+    roiaware_pool3d_ext = None
+
 
 
 def points_in_boxes_gpu(points, boxes):

@@ -2,10 +2,16 @@ import math
 
 import torch.nn as nn
 from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
-from mmcv.runner import BaseModule
+try:
+    from mmengine.model import BaseModule
+except ImportError:
+    from mmcv.runner import BaseModule
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from mmdet.models.builder import BACKBONES
+try:
+    from mmdet.registry import MODELS as BACKBONES
+except ImportError:
+    from mmdet.models.builder import BACKBONES
 from mmdet.models.backbones.csp_darknet import Focus, SPPBottleneck
 
 from ..utils import CSPLayer

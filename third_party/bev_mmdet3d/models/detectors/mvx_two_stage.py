@@ -3,7 +3,7 @@ import mmcv
 import torch
 import warnings
 from mmcv.parallel import DataContainer as DC
-from mmcv.runner import force_fp32
+from third_party.bev_mmdet3d.models.compat import force_fp32
 from os import path as osp
 from torch.nn import functional as F
 

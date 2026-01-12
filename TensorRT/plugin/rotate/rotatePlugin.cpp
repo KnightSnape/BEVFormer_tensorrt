@@ -84,27 +84,27 @@ int32_t RotatePlugin::enqueue(const nvinfer1::PluginTensorDesc *inputDesc,
   switch (data_type) {
   case DataType::kFLOAT:
     rotate<float>((float *)outputs[0], (float *)inputs[0], (float *)inputs[1],
-                  (float *)inputs[2], &(input_dims.d[0]), mMode, stream);
+                  (float *)inputs[2], reinterpret_cast<int*>(&input_dims.d[0]), mMode, stream);
     break;
   case DataType::kHALF:
     if (use_h2) {
       rotate_h2((__half2 *)outputs[0], (__half2 *)inputs[0],
-                (__half *)inputs[1], (__half *)inputs[2], &(input_dims.d[0]),
+                (__half *)inputs[1], (__half *)inputs[2], reinterpret_cast<int*>(&input_dims.d[0]),
                 mMode, stream);
     } else {
       rotate<__half>((__half *)outputs[0], (__half *)inputs[0],
                      (__half *)inputs[1], (__half *)inputs[2],
-                     &(input_dims.d[0]), mMode, stream);
+                     reinterpret_cast<int*>(&input_dims.d[0]), mMode, stream);
     }
     break;
   case DataType::kINT8:
     if (data_type_angle == DataType::kFLOAT) {
       rotate_int8((int8_4 *)outputs[0], scale_o, (int8_4 *)inputs[0], scale_i,
-                  (float *)inputs[1], (float *)inputs[2], &(input_dims.d[0]),
+                  (float *)inputs[1], (float *)inputs[2], reinterpret_cast<int*>(&input_dims.d[0]),
                   mMode, stream);
     } else {
       rotate_int8((int8_4 *)outputs[0], scale_o, (int8_4 *)inputs[0], scale_i,
-                  (__half *)inputs[1], (__half *)inputs[2], &(input_dims.d[0]),
+                  (__half *)inputs[1], (__half *)inputs[2], reinterpret_cast<int*>(&input_dims.d[0]),
                   mMode, stream);
     }
     break;

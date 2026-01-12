@@ -20,7 +20,7 @@ from .temporal_self_attention import TemporalSelfAttention
 from .spatial_cross_attention import MSDeformableAttention3D
 from .decoder import CustomMSDeformableAttention
 from ..utils.bricks import run_time
-from mmcv.runner import force_fp32, auto_fp16
+from third_party.bev_mmdet3d.models.compat import force_fp32, auto_fp16
 
 
 @TRANSFORMER.register_module()

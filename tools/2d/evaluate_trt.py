@@ -7,7 +7,11 @@ import mmcv
 from mmcv import Config
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.apis import init_detector
-from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+# Use our own plugin loader instead of mmdeploy
+try:
+    from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+except ImportError:
+    from det2trt.utils.plugin_loader import load_tensorrt_plugin
 
 
 import sys

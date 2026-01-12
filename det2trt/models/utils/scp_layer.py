@@ -1,9 +1,17 @@
 import torch
 import torch.nn as nn
 from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
-from mmcv.runner import BaseModule
+try:
+    from mmengine.model import BaseModule
+except ImportError:
+    from mmcv.runner import BaseModule
 
-from pytorch_quantization import nn as quant_nn
+try:
+    from pytorch_quantization import nn as quant_nn
+    HAS_QUANT = True
+except ImportError:
+    HAS_QUANT = False
+    quant_nn = None
 
 
 class DarknetBottleneck(BaseModule):

@@ -387,6 +387,7 @@ def rotate_p2(
 
 @parse_args("v", "v", "i", "i", "i")
 def grid_sampler_sym(g, input, grid, interpolation_mode, padding_mode, align_corners):
+    # 使用 mmdeploy 的 grid_sampler 插件
     return g.op(
         "mmdeploy::grid_sampler",
         input,
@@ -398,3 +399,4 @@ def grid_sampler_sym(g, input, grid, interpolation_mode, padding_mode, align_cor
 
 
 torch.onnx.register_custom_op_symbolic("aten::grid_sampler", grid_sampler_sym, 13)
+

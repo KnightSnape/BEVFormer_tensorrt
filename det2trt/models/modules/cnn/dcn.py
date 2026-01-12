@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
-import pytorch_quantization.nn as quant_nn
+try:
+    import pytorch_quantization.nn as quant_nn
+    HAS_QUANT = True
+except ImportError:
+    HAS_QUANT = False
+    quant_nn = None
 from mmcv.ops.modulated_deform_conv import (
     ModulatedDeformConv2dPack,
     ModulatedDeformConv2d,
@@ -12,20 +17,21 @@ from det2trt.models.functions import (
 )
 
 
-@CONV_LAYERS.register_module("DCNv2Q")
-class ModulatedDeformConv2dPackQ(ModulatedDeformConv2dPack):
-    def __init__(self, *args, **kwargs):
-        super(ModulatedDeformConv2dPack, self).__init__(*args, **kwargs)
-        self.conv_offset = quant_nn.Conv2d(
-            self.in_channels,
-            self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
-            kernel_size=self.kernel_size,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            bias=True,
-        )
-        self.init_weights()
+if HAS_QUANT and quant_nn is not None:
+    @CONV_LAYERS.register_module("DCNv2Q")
+    class ModulatedDeformConv2dPackQ(ModulatedDeformConv2dPack):
+        def __init__(self, *args, **kwargs):
+            super(ModulatedDeformConv2dPack, self).__init__(*args, **kwargs)
+            self.conv_offset = quant_nn.Conv2d(
+                self.in_channels,
+                self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding,
+                dilation=self.dilation,
+                bias=True,
+            )
+            self.init_weights()
 
 
 @CONV_LAYERS.register_module("DCNv2P")
@@ -164,33 +170,35 @@ class ModulatedDeformConv2dPackPlugin2(ModulatedDeformConv2dPackPlugin):
         )
 
 
-@CONV_LAYERS.register_module("DCNv2PQ")
-class ModulatedDeformConv2dPackPluginQ(ModulatedDeformConv2dPackPlugin):
-    def __init__(self, *args, **kwargs):
-        super(ModulatedDeformConv2dPackPlugin, self).__init__(*args, **kwargs)
-        self.conv_offset = quant_nn.Conv2d(
-            self.in_channels,
-            self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
-            kernel_size=self.kernel_size,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            bias=True,
-        )
-        self.init_weights()
+if HAS_QUANT and quant_nn is not None:
+    @CONV_LAYERS.register_module("DCNv2PQ")
+    class ModulatedDeformConv2dPackPluginQ(ModulatedDeformConv2dPackPlugin):
+        def __init__(self, *args, **kwargs):
+            super(ModulatedDeformConv2dPackPlugin, self).__init__(*args, **kwargs)
+            self.conv_offset = quant_nn.Conv2d(
+                self.in_channels,
+                self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding,
+                dilation=self.dilation,
+                bias=True,
+            )
+            self.init_weights()
 
 
-@CONV_LAYERS.register_module("DCNv2PQ2")
-class ModulatedDeformConv2dPackPluginQ2(ModulatedDeformConv2dPackPlugin2):
-    def __init__(self, *args, **kwargs):
-        super(ModulatedDeformConv2dPackPlugin2, self).__init__(*args, **kwargs)
-        self.conv_offset = quant_nn.Conv2d(
-            self.in_channels,
-            self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
-            kernel_size=self.kernel_size,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            bias=True,
-        )
-        self.init_weights()
+if HAS_QUANT and quant_nn is not None:
+    @CONV_LAYERS.register_module("DCNv2PQ2")
+    class ModulatedDeformConv2dPackPluginQ2(ModulatedDeformConv2dPackPlugin2):
+        def __init__(self, *args, **kwargs):
+            super(ModulatedDeformConv2dPackPlugin2, self).__init__(*args, **kwargs)
+            self.conv_offset = quant_nn.Conv2d(
+                self.in_channels,
+                self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                padding=self.padding,
+                dilation=self.dilation,
+                bias=True,
+            )
+            self.init_weights()

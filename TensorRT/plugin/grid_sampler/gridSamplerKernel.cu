@@ -83,11 +83,11 @@ template <typename scalar_t>
 __forceinline__ __device__ scalar_t
 grid_sampler_unnormalize(scalar_t coord, int size, bool align_corners) {
   if (align_corners) {
-    // unnormalize coord from [-10, 10] to [0, size - 1]
-    return ((coord + 10.f) / 2) * (static_cast<float>(size - 1) / 10.f);
+    // unnormalize coord from [-1, 1] to [0, size - 1]
+    return ((coord + 1.f) / 2) * (size - 1);
   } else {
-    // unnormalize coord from [-10, 10] to [-0.5, size - 0.5]
-    return ((coord + 10.f) / 2) * (static_cast<float>(size) / 10.f) - 0.5;
+    // unnormalize coord from [-1, 1] to [-0.5, size - 0.5]
+    return ((coord + 1.f) * size - 1) / 2;
   }
 }
 
@@ -96,22 +96,14 @@ __forceinline__ __device__ __half grid_sampler_unnormalize(__half coord,
                                                            int size,
                                                            bool align_corners) {
   if (align_corners) {
-    // unnormalize coord from [-10, 10] to [0, size - 1]
-    return __hmul(
-        __hfma(static_cast<__half>(0.5), coord, static_cast<__half>(5.)),
-        static_cast<__half>((size - 1) * 0.1));
-    //        return __hmul(__hfma(static_cast<__half>(0.5), coord,
-    //        static_cast<__half>(0.5)), static_cast<__half>(size-1));
-    //      return ((coord + 1.) / 2) * (size - 1);
+    // unnormalize coord from [-1, 1] to [0, size - 1]
+    return __hmul(__hfma(static_cast<__half>(0.5), coord,
+                        static_cast<__half>(0.5)), static_cast<__half>(size-1));
   } else {
-    // unnormalize coord from [-10, 10] to [-0.5, size - 0.5]
-    return __hfma(
-        __hfma(static_cast<__half>(0.5), coord, static_cast<__half>(5.)),
-        static_cast<__half>(size * 0.1), static_cast<__half>(-0.5));
-    //        return __hfma(__hfma(coord, static_cast<__half>(size),
-    //        static_cast<__half>(size)), static_cast<__half>(0.5),
-    //        static_cast<__half>(-0.5));
-    //      return ((coord + 1.) * size - 1) / 2;
+    // unnormalize coord from [-1, 1] to [-0.5, size - 0.5]
+    return __hfma(__hfma(coord, static_cast<__half>(size),
+                        static_cast<__half>(size)), static_cast<__half>(0.5),
+                        static_cast<__half>(-0.5));
   }
 }
 
@@ -119,36 +111,30 @@ template <>
 __forceinline__ __device__ __half2
 grid_sampler_unnormalize(__half2 coord, int size, bool align_corners) {
   if (align_corners) {
-    // unnormalize coord from [-10, 10] to [0, size - 1]
-    return __hmul2(__hfma2(__float2half2_rn(0.5), coord, __float2half2_rn(5.)),
-                   __float2half2_rn((size - 1) * 0.1));
-    //        return __hmul2(__hfma2(__float2half2_rn(0.5), coord,
-    //        __float2half2_rn(0.5)),
-    //        __float2half2_rn(static_cast<float>(size-1)));
-    //      return ((coord + 1.) / 2) * (size - 1);
+    // unnormalize coord from [-1, 1] to [0, size - 1]
+    return __hmul2(__hfma2(__float2half2_rn(0.5), coord,
+                          __float2half2_rn(0.5)),
+                   __float2half2_rn(static_cast<float>(size-1)));
   } else {
-    // unnormalize coord from [-10, 10] to [-0.5, size - 0.5]
-    return __hfma2(__hfma2(__float2half2_rn(0.5), coord, __float2half2_rn(5.)),
-                   __float2half2_rn(size * 0.1), __float2half2_rn(-0.5));
-    //        return __hfma2(__hfma2(coord,
-    //        __float2half2_rn(static_cast<float>(size)),
-    //        __float2half2_rn(static_cast<float>(size))),
-    //        __float2half2_rn(0.5), __float2half2_rn(-0.5));
-    //      return ((coord + 1.) * size - 1) / 2;
+    // unnormalize coord from [-1, 1] to [-0.5, size - 0.5]
+    return __hfma2(__hfma2(coord,
+                          __float2half2_rn(static_cast<float>(size)),
+                          __float2half2_rn(static_cast<float>(size))),
+                   __float2half2_rn(0.5), __float2half2_rn(-0.5));
   }
 }
 
 __forceinline__ __device__ __half2
 grid_sampler_unnormalize_h2(__half2 coord, __half2 size, bool align_corners) {
   if (align_corners) {
-    // unnormalize coord from [-10, 10] to [0, size - 1]
+    // unnormalize coord from [-1, 1] to [0, size - 1]
     return __hmul2(
-        __hfma2(__float2half2_rn(0.5), coord, __float2half2_rn(5.)),
-        __hfma2(size, __float2half2_rn(0.1), __float2half2_rn(-0.1)));
+        __hfma2(__float2half2_rn(0.5), coord, __float2half2_rn(0.5)),
+        __hadd2(size, __float2half2_rn(-1.)));
   } else {
-    // unnormalize coord from [-10, 10] to [-0.5, size - 0.5]
-    return __hfma2(__hfma2(__float2half2_rn(0.5), coord, __float2half2_rn(5.)),
-                   __hmul2(size, __float2half2_rn(0.1)),
+    // unnormalize coord from [-1, 1] to [-0.5, size - 0.5]
+    return __hfma2(__hfma2(coord, size, size),
+                   __float2half2_rn(0.5),
                    __float2half2_rn(-0.5));
   }
 }
@@ -669,126 +655,112 @@ __global__ void grid_sampler_2d_kernel(
     scalar_t *output, TensorDesc input_desc, TensorDesc grid_desc,
     TensorDesc output_desc, const GridSamplerInterpolation interpolation_mode,
     const GridSamplerPadding padding_mode, const bool align_corners) {
-  int C = input_desc.shape[1];
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= nthreads) return;
+  
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    printf("[KERNEL_START] nthreads=%d\n", nthreads);
+    printf("[KERNEL_DEBUG] input_desc.shape=[%d,%d,%d,%d]\n",
+           input_desc.shape[0], input_desc.shape[1], input_desc.shape[2], input_desc.shape[3]);
+    printf("[KERNEL_DEBUG] grid_desc.shape=[%d,%d,%d,%d]\n",
+           grid_desc.shape[0], grid_desc.shape[1], grid_desc.shape[2], grid_desc.shape[3]);
+    printf("[KERNEL_DEBUG] output_desc.shape=[%d,%d,%d,%d]\n",
+           output_desc.shape[0], output_desc.shape[1], output_desc.shape[2], output_desc.shape[3]);
+  }
+  
+  // Calculate n, h, w from index
+  const int C = input_desc.shape[1];
+  const int out_H = grid_desc.shape[1];
+  const int out_W = grid_desc.shape[2];
+  
+  int n = index / (out_H * out_W);
+  int remaining = index % (out_H * out_W);
+  int h = remaining / out_W;
+  int w = remaining % out_W;
+  
+  if (threadIdx.x < 3 && blockIdx.x == 0) {
+    printf("[KERNEL_THREAD_%d] Calculated: n=%d, h=%d, w=%d (out_H=%d, out_W=%d)\n",
+           threadIdx.x, n, h, w, out_H, out_W);
+  }
+  
+  // Get input dimensions and strides
   int inp_H = input_desc.shape[2];
   int inp_W = input_desc.shape[3];
-  int out_H = grid_desc.shape[2];
-  int out_W = grid_desc.shape[3];
   int inp_sN = input_desc.stride[0];
   int inp_sC = input_desc.stride[1];
   int inp_sH = input_desc.stride[2];
   int inp_sW = input_desc.stride[3];
+  
+  // Get grid strides (FIXED: correct order for [N,H,W,Coord])
   int grid_sN = grid_desc.stride[0];
-  int grid_sCoor = grid_desc.stride[1];
-  int grid_sH = grid_desc.stride[2];
-  int grid_sW = grid_desc.stride[3];
+  int grid_sH = grid_desc.stride[1];
+  int grid_sW = grid_desc.stride[2];
+  int grid_sCoor = grid_desc.stride[3];
+  
+  // Get output strides
   int out_sN = output_desc.stride[0];
   int out_sC = output_desc.stride[1];
   int out_sH = output_desc.stride[2];
   int out_sW = output_desc.stride[3];
-
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    const int w = index % out_W;
-    const int h = (index / out_W) % out_H;
-    const int n = index / (out_H * out_W);
-    const int grid_offset = n * grid_sN + h * grid_sH + w * grid_sW;
-
-    // get the corresponding input x, y coordinates from grid
-    scalar_t grid_x = grid[grid_offset];
-    scalar_t grid_y = grid[grid_offset + grid_sCoor];
-
-    scalar_t ix = grid_sampler_compute_source_index(grid_x, inp_W, padding_mode,
-                                                    align_corners);
-    scalar_t iy = grid_sampler_compute_source_index(grid_y, inp_H, padding_mode,
-                                                    align_corners);
-
-    if (interpolation_mode == GridSamplerInterpolation::Bilinear) {
-      // get NE, NW, SE, SW pixel values from (x, y)
-      int ix_nw = static_cast<int>(::floor(ix));
-      int iy_nw = static_cast<int>(::floor(iy));
-      int ix_ne = ix_nw + 1;
-      int iy_ne = iy_nw;
-      int ix_sw = ix_nw;
-      int iy_sw = iy_nw + 1;
-      int ix_se = ix_nw + 1;
-      int iy_se = iy_nw + 1;
-
-      // get surfaces to each neighbor:
-      scalar_t nw = (ix_se - ix) * (iy_se - iy);
-      scalar_t ne = (ix - ix_sw) * (iy_sw - iy);
-      scalar_t sw = (ix_ne - ix) * (iy - iy_ne);
-      scalar_t se = (ix - ix_nw) * (iy - iy_nw);
-
-      // calculate bilinear weighted pixel value and set output pixel
-      auto inp_ptr_NC = input + n * inp_sN;
-      auto out_ptr_NCHW = output + n * out_sN + h * out_sH + w * out_sW;
-      for (int c = 0; c < C;
-           ++c, inp_ptr_NC += inp_sC, out_ptr_NCHW += out_sC) {
+  
+  // Calculate grid offset
+  int grid_offset = n * grid_sN + h * grid_sH + w * grid_sW;
+  
+  // Read grid coordinates
+  scalar_t grid_x = grid[grid_offset];
+  scalar_t grid_y = grid[grid_offset + grid_sCoor];
+  
+  // Compute source coordinates (FIXED: using [-1,1] range)
+  scalar_t ix = grid_sampler_compute_source_index(grid_x, inp_W, padding_mode, align_corners);
+  scalar_t iy = grid_sampler_compute_source_index(grid_y, inp_H, padding_mode, align_corners);
+  
+  if (interpolation_mode == GridSamplerInterpolation::Bilinear) {
+    // Get corner pixel indices
+    int ix_nw = static_cast<int>(::floor(ix));
+    int iy_nw = static_cast<int>(::floor(iy));
+    int ix_ne = ix_nw + 1;
+    int iy_ne = iy_nw;
+    int ix_sw = ix_nw;
+    int iy_sw = iy_nw + 1;
+    int ix_se = ix_nw + 1;
+    int iy_se = iy_nw + 1;
+    
+    // Get interpolation weights
+    scalar_t nw = (ix_se - ix) * (iy_se - iy);
+    scalar_t ne = (ix - ix_sw) * (iy_sw - iy);
+    scalar_t sw = (ix_ne - ix) * (iy - iy_ne);
+    scalar_t se = (ix - ix_nw) * (iy - iy_nw);
+    
+    // Perform interpolation for all channels
+    auto inp_ptr_NC = input + n * inp_sN;
+    auto out_ptr_NCHW = output + n * out_sN + h * out_sH + w * out_sW;
+    
+    for (int c = 0; c < C; ++c, inp_ptr_NC += inp_sC, out_ptr_NCHW += out_sC) {
+      *out_ptr_NCHW = static_cast<scalar_t>(0);
+      if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
+        *out_ptr_NCHW += inp_ptr_NC[iy_nw * inp_sH + ix_nw * inp_sW] * nw;
+      }
+      if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
+        *out_ptr_NCHW += inp_ptr_NC[iy_ne * inp_sH + ix_ne * inp_sW] * ne;
+      }
+      if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
+        *out_ptr_NCHW += inp_ptr_NC[iy_sw * inp_sH + ix_sw * inp_sW] * sw;
+      }
+      if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
+        *out_ptr_NCHW += inp_ptr_NC[iy_se * inp_sH + ix_se * inp_sW] * se;
+      }
+    }
+  } else if (interpolation_mode == GridSamplerInterpolation::Nearest) {
+    int ix_nearest = static_cast<int>(::round(ix));
+    int iy_nearest = static_cast<int>(::round(iy));
+    
+    auto inp_ptr_NC = input + n * inp_sN;
+    auto out_ptr_NCHW = output + n * out_sN + h * out_sH + w * out_sW;
+    for (int c = 0; c < C; ++c, inp_ptr_NC += inp_sC, out_ptr_NCHW += out_sC) {
+      if (within_bounds_2d(iy_nearest, ix_nearest, inp_H, inp_W)) {
+        *out_ptr_NCHW = inp_ptr_NC[iy_nearest * inp_sH + ix_nearest * inp_sW];
+      } else {
         *out_ptr_NCHW = static_cast<scalar_t>(0);
-        if (within_bounds_2d(iy_nw, ix_nw, inp_H, inp_W)) {
-          *out_ptr_NCHW += inp_ptr_NC[iy_nw * inp_sH + ix_nw * inp_sW] * nw;
-        }
-        if (within_bounds_2d(iy_ne, ix_ne, inp_H, inp_W)) {
-          *out_ptr_NCHW += inp_ptr_NC[iy_ne * inp_sH + ix_ne * inp_sW] * ne;
-        }
-        if (within_bounds_2d(iy_sw, ix_sw, inp_H, inp_W)) {
-          *out_ptr_NCHW += inp_ptr_NC[iy_sw * inp_sH + ix_sw * inp_sW] * sw;
-        }
-        if (within_bounds_2d(iy_se, ix_se, inp_H, inp_W)) {
-          *out_ptr_NCHW += inp_ptr_NC[iy_se * inp_sH + ix_se * inp_sW] * se;
-        }
-      }
-    } else if (interpolation_mode == GridSamplerInterpolation::Nearest) {
-      int ix_nearest = static_cast<int>(::round(ix));
-      int iy_nearest = static_cast<int>(::round(iy));
-
-      // assign nearest neighbor pixel value to output pixel
-      auto inp_ptr_NC = input + n * inp_sN;
-      auto out_ptr_NCHW = output + n * out_sN + h * out_sH + w * out_sW;
-      for (int c = 0; c < C;
-           ++c, inp_ptr_NC += inp_sC, out_ptr_NCHW += out_sC) {
-        if (within_bounds_2d(iy_nearest, ix_nearest, inp_H, inp_W)) {
-          *out_ptr_NCHW = inp_ptr_NC[iy_nearest * inp_sH + ix_nearest * inp_sW];
-        } else {
-          *out_ptr_NCHW = static_cast<scalar_t>(0);
-        }
-      }
-    } else if (interpolation_mode == GridSamplerInterpolation::Bicubic) {
-      ix = grid_sampler_unnormalize(grid_x, inp_W, align_corners);
-      iy = grid_sampler_unnormalize(grid_y, inp_H, align_corners);
-
-      scalar_t ix_nw = ::floor(ix);
-      scalar_t iy_nw = ::floor(iy);
-
-      const scalar_t tx = ix - ix_nw;
-      const scalar_t ty = iy - iy_nw;
-
-      auto inp_ptr_NC = input + n * inp_sN;
-      auto out_ptr_NCHW = output + n * out_sN + h * out_sH + w * out_sW;
-      for (int c = 0; c < C;
-           ++c, inp_ptr_NC += inp_sC, out_ptr_NCHW += out_sC) {
-        scalar_t coefficients[4];
-
-#pragma unroll 4
-        for (int i = 0; i < 4; ++i) {
-          coefficients[i] = cubic_interp1d(
-              get_value_bounded<scalar_t>(inp_ptr_NC, ix_nw - 1, iy_nw - 1 + i,
-                                          inp_W, inp_H, inp_sW, inp_sH,
-                                          padding_mode, align_corners),
-              get_value_bounded<scalar_t>(inp_ptr_NC, ix_nw + 0, iy_nw - 1 + i,
-                                          inp_W, inp_H, inp_sW, inp_sH,
-                                          padding_mode, align_corners),
-              get_value_bounded<scalar_t>(inp_ptr_NC, ix_nw + 1, iy_nw - 1 + i,
-                                          inp_W, inp_H, inp_sW, inp_sH,
-                                          padding_mode, align_corners),
-              get_value_bounded<scalar_t>(inp_ptr_NC, ix_nw + 2, iy_nw - 1 + i,
-                                          inp_W, inp_H, inp_sW, inp_sH,
-                                          padding_mode, align_corners),
-              tx);
-        }
-
-        *out_ptr_NCHW = cubic_interp1d(coefficients[0], coefficients[1],
-                                       coefficients[2], coefficients[3], ty);
       }
     }
   }
@@ -810,9 +782,9 @@ __global__ void grid_sampler_2d_kernel(
   int inp_sH = input_desc.stride[2];
   int inp_sW = input_desc.stride[3];
   int grid_sN = grid_desc.stride[0];
-  int grid_sCoor = grid_desc.stride[1];
-  int grid_sH = grid_desc.stride[2];
-  int grid_sW = grid_desc.stride[3];
+  int grid_sH = grid_desc.stride[1];     // ✅ H stride
+  int grid_sW = grid_desc.stride[2];     // ✅ W stride
+  int grid_sCoor = grid_desc.stride[3];  // ✅ Coord stride
   int out_sN = output_desc.stride[0];
   int out_sC = output_desc.stride[1];
   int out_sH = output_desc.stride[2];
@@ -1286,10 +1258,10 @@ __global__ void grid_sampler_3d_kernel(
   int inp_sH = input_desc.stride[3];
   int inp_sW = input_desc.stride[4];
   int grid_sN = grid_desc.stride[0];
-  int grid_sCoor = grid_desc.stride[1];
-  int grid_sD = grid_desc.stride[2];
-  int grid_sH = grid_desc.stride[3];
-  int grid_sW = grid_desc.stride[4];
+  int grid_sD = grid_desc.stride[1];     // ✅ D stride
+  int grid_sH = grid_desc.stride[2];     // ✅ H stride
+  int grid_sW = grid_desc.stride[3];     // ✅ W stride
+  int grid_sCoor = grid_desc.stride[4];  // ✅ Coord stride
   int out_sN = output_desc.stride[0];
   int out_sC = output_desc.stride[1];
   int out_sD = output_desc.stride[2];
@@ -1460,10 +1432,10 @@ __global__ void grid_sampler_3d_kernel(
   int inp_sH = input_desc.stride[3];
   int inp_sW = input_desc.stride[4];
   int grid_sN = grid_desc.stride[0];
-  int grid_sCoor = grid_desc.stride[1];
-  int grid_sD = grid_desc.stride[2];
-  int grid_sH = grid_desc.stride[3];
-  int grid_sW = grid_desc.stride[4];
+  int grid_sD = grid_desc.stride[1];     // ✅ D stride
+  int grid_sH = grid_desc.stride[2];     // ✅ H stride
+  int grid_sW = grid_desc.stride[3];     // ✅ W stride
+  int grid_sCoor = grid_desc.stride[4];  // ✅ Coord stride
   int out_sN = output_desc.stride[0];
   int out_sC = output_desc.stride[1];
   int out_sD = output_desc.stride[2];
@@ -1651,10 +1623,10 @@ __global__ void grid_sampler_3d_kernel(
   int inp_sH = input_desc.stride[3];
   int inp_sW = input_desc.stride[4];
   int grid_sN = grid_desc.stride[0];
-  int grid_sCoor = grid_desc.stride[1];
-  int grid_sD = grid_desc.stride[2];
-  int grid_sH = grid_desc.stride[3];
-  int grid_sW = grid_desc.stride[4];
+  int grid_sD = grid_desc.stride[1];     // ✅ D stride
+  int grid_sH = grid_desc.stride[2];     // ✅ H stride
+  int grid_sW = grid_desc.stride[3];     // ✅ W stride
+  int grid_sCoor = grid_desc.stride[4];  // ✅ Coord stride
   int out_sN = output_desc.stride[0];
   int out_sC = output_desc.stride[1];
   int out_sD = output_desc.stride[2];
@@ -1935,6 +1907,8 @@ void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
                  int *input_dims, int *grid_dims, int nb_dims,
                  GridSamplerInterpolation interp, GridSamplerPadding padding,
                  bool align_corners, cudaStream_t stream) {
+  printf("[DEBUG_GRID_SAMPLE_HOST] grid_sample() host function called, nb_dims=%d, align_corners=%d\n", nb_dims, (int)align_corners);
+  
   TensorDesc input_desc;
   create_desc(input_dims, nb_dims, input_desc);
 
@@ -1943,6 +1917,13 @@ void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
 
   TensorDesc grid_desc;
   create_desc(grid_dims, nb_dims, grid_desc);
+
+  printf("[DEBUG_GRID_SAMPLE_HOST] output_desc.shape: [%d, %d, %d, %d]\n", 
+         output_desc.shape[0], output_desc.shape[1], output_desc.shape[2], output_desc.shape[3]);
+  printf("[DEBUG_GRID_SAMPLE_HOST] input_desc.shape: [%d, %d, %d, %d]\n",
+         input_desc.shape[0], input_desc.shape[1], input_desc.shape[2], input_desc.shape[3]);
+  printf("[DEBUG_GRID_SAMPLE_HOST] grid_desc.shape: [%d, %d, %d, %d]\n",
+         grid_desc.shape[0], grid_desc.shape[1], grid_desc.shape[2], grid_desc.shape[3]);
 
   int count = 1;
   for (int i = 0; i < nb_dims; ++i) {
@@ -1953,11 +1934,27 @@ void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
   }
 
   if (nb_dims == 4) {
+    printf("[DEBUG_GRID_SAMPLE_HOST] Launching grid_sampler_2d_kernel with count=%d\n", count);
     grid_sampler_2d_kernel<T>
         <<<GET_BLOCKS(count), THREADS_PER_BLOCK, 0, stream>>>(
             count, input, grid, output, input_desc, grid_desc, output_desc,
             interp, padding, align_corners);
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      printf("[DEBUG_GRID_SAMPLE_HOST] Kernel launch ERROR: %s\n", cudaGetErrorString(err));
+    } else {
+      printf("[DEBUG_GRID_SAMPLE_HOST] Kernel launched without immediate error\n");
+    }
+    // Force synchronization to see kernel output
+    cudaStreamSynchronize(stream);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      printf("[DEBUG_GRID_SAMPLE_HOST] Kernel execution ERROR after sync: %s\n", cudaGetErrorString(err));
+    } else {
+      printf("[DEBUG_GRID_SAMPLE_HOST] Kernel executed successfully!\n");
+    }
   } else if (nb_dims == 5) {
+    printf("[DEBUG_GRID_SAMPLE_HOST] Launching grid_sampler_3d_kernel with count=%d\n", count);
     grid_sampler_3d_kernel<T>
         <<<GET_BLOCKS(count), THREADS_PER_BLOCK, 0, stream>>>(
             count, input, grid, output, input_desc, grid_desc, output_desc,
@@ -1965,6 +1962,8 @@ void grid_sample(T *output, const T *input, const T *grid, int *output_dims,
   } else {
     printf("input and grid dims should be 4 or 5\n");
   }
+  
+  printf("[DEBUG_GRID_SAMPLE_HOST] grid_sample() finished launching kernel\n");
 }
 
 template <>
