@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from PIL import Image
-from mmcv.runner import force_fp32, auto_fp16
+from third_party.bev_mmdet3d.models.compat import force_fp32, auto_fp16
 
 
 class Grid(object):

@@ -2,7 +2,10 @@ import numpy as np
 import torch
 from torch.onnx import OperatorExportTypes
 from mmdet.models import build_detector
-from mmcv.runner import load_checkpoint
+try:
+    from mmengine.runner import load_checkpoint
+except ImportError:
+    from mmcv.runner import load_checkpoint
 
 
 @torch.no_grad()

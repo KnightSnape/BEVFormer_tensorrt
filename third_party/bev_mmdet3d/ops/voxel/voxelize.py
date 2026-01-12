@@ -4,7 +4,14 @@ from torch import nn
 from torch.autograd import Function
 from torch.nn.modules.utils import _pair
 
-from .voxel_layer import dynamic_voxelize, hard_voxelize
+try:
+    from .voxel_layer import dynamic_voxelize, hard_voxelize
+    VOXEL_LAYER_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    VOXEL_LAYER_AVAILABLE = False
+    dynamic_voxelize = None
+    hard_voxelize = None
+    print("Warning: voxel_layer not available for voxelize")
 
 
 class _Voxelization(Function):

@@ -186,6 +186,51 @@ private:
   static std::vector<nvinfer1::PluginField> mPluginAttributes;
 };
 
+// MMDeploy-compatible plugin creator (mmdeploy namespace)
+// Uses plugin name "grid_sampler" with namespace "mmdeploy"
+class GridSamplerMMDeployPluginCreator : public trt_plugin::BaseCreator {
+public:
+  GridSamplerMMDeployPluginCreator();
+  ~GridSamplerMMDeployPluginCreator() override = default;
+
+  char const *getPluginName() const noexcept override;
+  char const *getPluginVersion() const noexcept override;
+  nvinfer1::PluginFieldCollection const *getFieldNames() noexcept override;
+  nvinfer1::IPluginV2DynamicExt *
+  createPlugin(char const *name,
+               const nvinfer1::PluginFieldCollection *fc) noexcept override;
+  nvinfer1::IPluginV2DynamicExt *
+  deserializePlugin(char const *name, void const *serialData,
+                    size_t serialLength) noexcept override;
+
+private:
+  static nvinfer1::PluginFieldCollection mFC;
+  static std::vector<nvinfer1::PluginField> mPluginAttributes;
+};
+
+// MMDeploy-compatible plugin creator (EMPTY namespace)
+// Uses plugin name "grid_sampler" with EMPTY namespace ""
+// TensorRT ONNX parser sometimes maps "mmdeploy" domain to empty namespace
+class GridSamplerMMDeployPluginCreatorEmpty : public trt_plugin::BaseCreator {
+public:
+  GridSamplerMMDeployPluginCreatorEmpty();
+  ~GridSamplerMMDeployPluginCreatorEmpty() override = default;
+
+  char const *getPluginName() const noexcept override;
+  char const *getPluginVersion() const noexcept override;
+  nvinfer1::PluginFieldCollection const *getFieldNames() noexcept override;
+  nvinfer1::IPluginV2DynamicExt *
+  createPlugin(char const *name,
+               const nvinfer1::PluginFieldCollection *fc) noexcept override;
+  nvinfer1::IPluginV2DynamicExt *
+  deserializePlugin(char const *name, void const *serialData,
+                    size_t serialLength) noexcept override;
+
+private:
+  static nvinfer1::PluginFieldCollection mFC;
+  static std::vector<nvinfer1::PluginField> mPluginAttributes;
+};
+
 } // namespace trt_plugin
 
 #endif // TENSORRT_OPS_GRIDSAMPLERPLUGIN_H

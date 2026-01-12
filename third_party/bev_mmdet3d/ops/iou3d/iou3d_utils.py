@@ -1,6 +1,13 @@
 import torch
 
-from . import iou3d_cuda
+try:
+    from . import iou3d_cuda
+    CUDA_EXT_AVAILABLE = True
+except ImportError:
+    CUDA_EXT_AVAILABLE = False
+    iou3d_cuda = None
+    print("Warning: iou3d_cuda extension not available, some functions will not work")
+
 
 
 def boxes_iou_bev(boxes_a, boxes_b):

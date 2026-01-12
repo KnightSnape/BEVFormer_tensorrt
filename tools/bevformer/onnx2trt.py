@@ -7,7 +7,76 @@ import argparse
 import tensorrt as trt
 import numpy as np
 from mmcv import Config
-from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+
+# PRIORITY: Load our custom fixed grid_sampler plugin FIRST
+# This ensures our plugin is registered before mmdeploy's buggy one
+import ctypes
+
+def load_custom_tensorrt_plugin():
+    """Load our fixed grid_sampler plugin with [-1,1] coordinate range
+    
+    CRITICAL LOADING SEQUENCE:
+    1. Load custom .so with ctypes.CDLL() - this triggers REGISTER_TENSORRT_PLUGIN macros
+    2. Get plugin registry to verify plugins were registered
+    3. DO NOT call trt.init_libnvinfer_plugins() as it might interfere
+    
+    The REGISTER_TENSORRT_PLUGIN macro in the .cpp files automatically registers
+    plugins when the shared library is loaded into the process.
+    """
+    plugin_paths = [
+        "TensorRT/build/libtensorrt_ops.so",
+        "./TensorRT/build/libtensorrt_ops.so",
+        "/workspace/TensorRT/build/libtensorrt_ops.so",
+        "TensorRT/lib/libtensorrt_ops.so",
+        "./TensorRT/lib/libtensorrt_ops.so",
+        "/workspace/TensorRT/lib/libtensorrt_ops.so",
+    ]
+    
+    for plugin_path in plugin_paths:
+        if os.path.exists(plugin_path):
+            try:
+                # Load the shared library - this triggers plugin registration
+                lib = ctypes.CDLL(plugin_path, mode=ctypes.RTLD_GLOBAL)
+                
+                print(f"✅ Loaded CUSTOM grid_sampler plugin (FIXED): {plugin_path}")
+                print(f"   Plugin uses standard [-1, 1] coordinate range (not buggy [-10, 10])")
+                
+                # Verify plugin registration by querying the registry
+                try:
+                    registry = trt.get_plugin_registry()
+                    plugin_creators = [registry.get_creator(i) for i in range(registry.num_plugin_creators)]
+                    grid_sampler_plugins = [p for p in plugin_creators if 'grid' in p.name.lower() or 'GridSampler' in p.name]
+                    
+                    if grid_sampler_plugins:
+                        print(f"   ✅ Verified: Found {len(grid_sampler_plugins)} grid_sampler plugin(s) in registry:")
+                        for p in grid_sampler_plugins:
+                            print(f"      - {p.name} (version {p.plugin_version})")
+                    else:
+                        print(f"   ⚠️  WARNING: No grid_sampler plugins found in registry after loading!")
+                except Exception as e:
+                    print(f"   ⚠️  Could not verify plugin registration: {e}")
+                
+                return True
+            except Exception as e:
+                print(f"⚠️  Failed to load custom plugin {plugin_path}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+    
+    print("⚠️  WARNING: Custom grid_sampler plugin not found!")
+    print("   Falling back to mmdeploy plugin (may have coordinate range bug)")
+    return False
+
+# Load custom plugin FIRST (before any TRT operations)
+custom_plugin_loaded = load_custom_tensorrt_plugin()
+
+# Then optionally load mmdeploy plugins (for other ops, NOT grid_sampler)
+if not custom_plugin_loaded:
+    try:
+        from mmdeploy.backend.tensorrt import load_tensorrt_plugin
+        load_tensorrt_plugin()
+    except ImportError:
+        print("⚠️  mmdeploy not available, using only custom plugins")
 
 import sys
 
@@ -38,7 +107,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    load_tensorrt_plugin()
+    # Plugin already loaded at module level
 
     config = Config.fromfile(args.config)
     if hasattr(config, "plugin"):

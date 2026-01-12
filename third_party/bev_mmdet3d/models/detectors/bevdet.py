@@ -1,6 +1,6 @@
 # Copyright (c) Phigent Robotics. All rights reserved.
 import torch
-from mmcv.runner import force_fp32
+from third_party.bev_mmdet3d.models.compat import force_fp32
 
 from mmdet.models import DETECTORS
 from .. import builder

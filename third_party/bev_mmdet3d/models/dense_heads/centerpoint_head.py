@@ -3,7 +3,7 @@ import copy
 
 import torch
 from mmcv.cnn import ConvModule, build_conv_layer
-from mmcv.runner import BaseModule
+from third_party.bev_mmdet3d.models.compat import BaseModule
 from torch import nn
 from mmdet.core import build_bbox_coder, multi_apply, reduce_mean
 

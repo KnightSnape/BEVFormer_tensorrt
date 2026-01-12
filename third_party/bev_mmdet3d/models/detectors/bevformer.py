@@ -5,9 +5,11 @@
 # ---------------------------------------------
 
 import torch
-from mmcv.runner import force_fp32, auto_fp16
-from mmdet.models import DETECTORS
-from mmcv.parallel.data_container import DataContainer
+from third_party.bev_mmdet3d.models.compat import force_fp32, auto_fp16, DataContainer
+try:
+    from mmdet.registry import MODELS as DETECTORS
+except ImportError:
+    from mmdet.models import DETECTORS
 from ...core.bbox import bbox3d2result
 from .mvx_two_stage import MVXTwoStageDetector
 from ..utils.grid_mask import GridMask

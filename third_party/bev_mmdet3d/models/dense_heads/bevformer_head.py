@@ -18,7 +18,7 @@ from mmdet.models.dense_heads import DETRHead
 from mmdet.core.bbox import build_bbox_coder
 from ...core.bbox.util import normalize_bbox
 from mmcv.cnn.bricks.transformer import build_positional_encoding
-from mmcv.runner import force_fp32, auto_fp16
+from third_party.bev_mmdet3d.models.compat import force_fp32, auto_fp16
 from ..utils.bricks import run_time
 import numpy as np
 import mmcv

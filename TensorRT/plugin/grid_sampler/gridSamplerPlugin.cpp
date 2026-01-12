@@ -13,6 +13,8 @@ using trt_plugin::GridSampler2DPluginCreator;
 using trt_plugin::GridSampler2DPluginCreator2;
 using trt_plugin::GridSampler3DPluginCreator;
 using trt_plugin::GridSampler3DPluginCreator2;
+using trt_plugin::GridSamplerMMDeployPluginCreator;
+using trt_plugin::GridSamplerMMDeployPluginCreatorEmpty;
 using trt_plugin::GridSamplerPlugin;
 using namespace nvinfer1;
 using namespace nvinfer1::plugin;
@@ -23,6 +25,11 @@ constexpr char const *GS2D_PLUGIN_NAME{"GridSampler2DTRT"};
 constexpr char const *GS2D_PLUGIN_NAME2{"GridSampler2DTRT2"};
 constexpr char const *GS3D_PLUGIN_NAME{"GridSampler3DTRT"};
 constexpr char const *GS3D_PLUGIN_NAME2{"GridSampler3DTRT2"};
+// MMDeploy-compatible names
+constexpr char const *GS_MMDEPLOY_PLUGIN_NAME{"grid_sampler"};  // lowercase for mmdeploy
+constexpr char const *GS_MMDEPLOY_NAMESPACE{"mmdeploy"};
+// UNIQUE custom name to FORCE TensorRT to use our fixed plugin (bypass built-in GRID_SAMPLE)
+constexpr char const *GS_FORCE_CUSTOM_PLUGIN_NAME{"CustomGridSamplerFixed"};
 } // namespace
 
 PluginFieldCollection GridSampler2DPluginCreator::mFC{};
@@ -36,6 +43,12 @@ std::vector<PluginField> GridSampler3DPluginCreator::mPluginAttributes;
 
 PluginFieldCollection GridSampler3DPluginCreator2::mFC{};
 std::vector<PluginField> GridSampler3DPluginCreator2::mPluginAttributes;
+
+PluginFieldCollection GridSamplerMMDeployPluginCreator::mFC{};
+std::vector<PluginField> GridSamplerMMDeployPluginCreator::mPluginAttributes;
+
+PluginFieldCollection GridSamplerMMDeployPluginCreatorEmpty::mFC{};
+std::vector<PluginField> GridSamplerMMDeployPluginCreatorEmpty::mPluginAttributes;
 
 GridSamplerPlugin::GridSamplerPlugin(int mode, int paddingMode,
                                      bool alignCorners, bool use_h2, bool _3D)
@@ -87,11 +100,20 @@ DimsExprs GridSamplerPlugin::getOutputDimensions(
     nvinfer1::IExprBuilder &exprBuilder) noexcept {
   DimsExprs outputDim;
   outputDim.nbDims = inputs[0].nbDims;
-  outputDim.d[0] = inputs[0].d[0];
-  outputDim.d[1] = inputs[0].d[1];
+  
+  // For 2D grid_sampler:
+  // - input:  (N, C, H_in, W_in)
+  // - grid:   (N, H_out, W_out, 2)  <- last dim is (x,y) coordinates
+  // - output: (N, C, H_out, W_out)
+  outputDim.d[0] = inputs[0].d[0];  // batch size from input
+  outputDim.d[1] = inputs[0].d[1];  // channels from input
+  
+  // Spatial dimensions from grid's dimensions 1 and 2 (not 2 and 3!)
+  // grid.d[1] = H_out, grid.d[2] = W_out, grid.d[3] = 2 (coordinates)
   for (int i = 2; i < outputDim.nbDims; i++) {
-    outputDim.d[i] = inputs[1].d[i];
+    outputDim.d[i] = inputs[1].d[i - 1];  // grid.d[1], grid.d[2], ... (skip first dim)
   }
+  
   return outputDim;
 }
 
@@ -115,6 +137,18 @@ int32_t GridSamplerPlugin::enqueue(const nvinfer1::PluginTensorDesc *inputDesc,
   Dims input_dims = inputDesc[0].dims;
   Dims grid_dims = inputDesc[1].dims;
   Dims output_dims = outputDesc[0].dims;
+  
+  // TensorRT 10: Dims::d is int64_t[], need to convert to int[] for kernel
+  int output_dims_int[Dims::MAX_DIMS];
+  int input_dims_int[Dims::MAX_DIMS];
+  int grid_dims_int[Dims::MAX_DIMS];
+  
+  for (int i = 0; i < output_dims.nbDims; ++i) {
+    output_dims_int[i] = static_cast<int>(output_dims.d[i]);
+    input_dims_int[i] = static_cast<int>(input_dims.d[i]);
+    grid_dims_int[i] = static_cast<int>(grid_dims.d[i]);
+  }
+  
   const float scale_o = outputDesc[0].scale, scale_i = inputDesc[0].scale,
               scale_g = inputDesc[1].scale;
 
@@ -125,27 +159,27 @@ int32_t GridSamplerPlugin::enqueue(const nvinfer1::PluginTensorDesc *inputDesc,
   switch (data_type) {
   case DataType::kFLOAT:
     grid_sample<float>((float *)outputs[0], (float *)inputs[0],
-                       (float *)inputs[1], &(output_dims.d[0]),
-                       &(input_dims.d[0]), &(grid_dims.d[0]), input_dims.nbDims,
+                       (float *)inputs[1], output_dims_int,
+                       input_dims_int, grid_dims_int, input_dims.nbDims,
                        mMode, mPaddingMode, mAlignCorners, stream);
     break;
   case DataType::kHALF:
     if (use_h2) {
       grid_sample<__half2>(
           (__half2 *)outputs[0], (__half2 *)inputs[0], (__half2 *)inputs[1],
-          &(output_dims.d[0]), &(input_dims.d[0]), &(grid_dims.d[0]),
+          output_dims_int, input_dims_int, grid_dims_int,
           input_dims.nbDims, mMode, mPaddingMode, mAlignCorners, stream);
     } else {
       grid_sample<__half>(
           (__half *)outputs[0], (__half *)inputs[0], (__half *)inputs[1],
-          &(output_dims.d[0]), &(input_dims.d[0]), &(grid_dims.d[0]),
+          output_dims_int, input_dims_int, grid_dims_int,
           input_dims.nbDims, mMode, mPaddingMode, mAlignCorners, stream);
     }
     break;
   case DataType::kINT8:
     grid_sample_int8((int8_4 *)outputs[0], scale_o, (int8_4 *)inputs[0],
-                     scale_i, (int8_4 *)inputs[1], scale_g, &(output_dims.d[0]),
-                     &(input_dims.d[0]), &(grid_dims.d[0]), input_dims.nbDims,
+                     scale_i, (int8_4 *)inputs[1], scale_g, output_dims_int,
+                     input_dims_int, grid_dims_int, input_dims.nbDims,
                      mMode, mPaddingMode, mAlignCorners, stream);
     break;
   default:
@@ -555,7 +589,172 @@ IPluginV2DynamicExt *GridSampler3DPluginCreator2::deserializePlugin(
   return nullptr;
 }
 
+// ========================================================================
+// MMDeploy-compatible plugin creator
+// CRITICAL FIX: Use EMPTY namespace "" to match TensorRT ONNX parser behavior
+// Even though ONNX file says domain="mmdeploy", TensorRT looks for namespace=""
+// ========================================================================
+
+GridSamplerMMDeployPluginCreator::GridSamplerMMDeployPluginCreator() {
+  mPluginAttributes.clear();
+  mPluginAttributes.emplace_back(
+      PluginField("interpolation_mode", nullptr, PluginFieldType::kINT32, 1));
+  mPluginAttributes.emplace_back(
+      PluginField("padding_mode", nullptr, PluginFieldType::kINT32, 1));
+  mPluginAttributes.emplace_back(
+      PluginField("align_corners", nullptr, PluginFieldType::kINT32, 1));
+
+  mFC.nbFields = mPluginAttributes.size();
+  mFC.fields = mPluginAttributes.data();
+  
+  // CRITICAL: Set namespace to EMPTY "" not "mmdeploy"!
+  // TensorRT ONNX parser maps mmdeploy domain to empty namespace
+  setPluginNamespace("");
+}
+
+char const *GridSamplerMMDeployPluginCreator::getPluginName() const noexcept {
+  return GS_MMDEPLOY_PLUGIN_NAME;  // "grid_sampler"
+}
+
+char const *GridSamplerMMDeployPluginCreator::getPluginVersion() const noexcept {
+  return GS_PLUGIN_VERSION;  // "1"
+}
+
+PluginFieldCollection const *
+GridSamplerMMDeployPluginCreator::getFieldNames() noexcept {
+  return &mFC;
+}
+
+IPluginV2DynamicExt *GridSamplerMMDeployPluginCreator::createPlugin(
+    const char *name, const nvinfer1::PluginFieldCollection *fc) noexcept {
+  try {
+    int mode = 1, paddingMode = 0;  // Default: bilinear, zeros padding
+    bool alignCorners = false;
+    PluginField const *fields = fc->fields;
+    
+    for (int i = 0; i < fc->nbFields; i++) {
+      char const *attrName = fields[i].name;
+      if (!strcmp(attrName, "interpolation_mode")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        mode = *(static_cast<int const *>(fields[i].data));
+      } else if (!strcmp(attrName, "padding_mode")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        paddingMode = *(static_cast<int const *>(fields[i].data));
+      } else if (!strcmp(attrName, "align_corners")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        alignCorners = (bool)(*(static_cast<int const *>(fields[i].data)));
+      }
+    }
+
+    // Create 2D grid sampler plugin (BEVFormer uses 2D grid sampling)
+    // use_h2=false, _3D=false for standard 2D grid sampling
+    auto *plugin = new GridSamplerPlugin(mode, paddingMode, alignCorners, false, false);
+    plugin->setPluginNamespace(mNamespace.c_str());
+    plugin->initialize();
+    return plugin;
+  } catch (std::exception const &e) {
+    caughtError(e);
+  }
+  return nullptr;
+}
+
+IPluginV2DynamicExt *GridSamplerMMDeployPluginCreator::deserializePlugin(
+    const char *name, const void *serialData, size_t serialLength) noexcept {
+  try {
+    // Deserialize as 2D plugin
+    auto *plugin = new GridSamplerPlugin{serialData, serialLength, false, false};
+    plugin->setPluginNamespace(mNamespace.c_str());
+    plugin->initialize();
+    return plugin;
+  } catch (std::exception const &e) {
+    caughtError(e);
+  }
+  return nullptr;
+}
+
+// ========================================================================
+// MMDeploy-compatible plugin creator with EMPTY namespace
+// TensorRT ONNX parser sometimes maps custom domains to empty namespace
+// ========================================================================
+
+GridSamplerMMDeployPluginCreatorEmpty::GridSamplerMMDeployPluginCreatorEmpty() {
+  mPluginAttributes.clear();
+  mPluginAttributes.emplace_back(
+      PluginField("interpolation_mode", nullptr, PluginFieldType::kINT32, 1));
+  mPluginAttributes.emplace_back(
+      PluginField("padding_mode", nullptr, PluginFieldType::kINT32, 1));
+  mPluginAttributes.emplace_back(
+      PluginField("align_corners", nullptr, PluginFieldType::kINT32, 1));
+
+  mFC.nbFields = mPluginAttributes.size();
+  mFC.fields = mPluginAttributes.data();
+  
+  // Set namespace to EMPTY "" for TensorRT ONNX parser compatibility
+  setPluginNamespace("");
+}
+
+char const *GridSamplerMMDeployPluginCreatorEmpty::getPluginName() const noexcept {
+  return GS_FORCE_CUSTOM_PLUGIN_NAME;  // "CustomGridSamplerFixed" - FORCE our fixed plugin!
+}
+
+char const *GridSamplerMMDeployPluginCreatorEmpty::getPluginVersion() const noexcept {
+  return GS_PLUGIN_VERSION;  // "1"
+}
+
+PluginFieldCollection const *
+GridSamplerMMDeployPluginCreatorEmpty::getFieldNames() noexcept {
+  return &mFC;
+}
+
+IPluginV2DynamicExt *GridSamplerMMDeployPluginCreatorEmpty::createPlugin(
+    const char *name, const nvinfer1::PluginFieldCollection *fc) noexcept {
+  try {
+    int mode = 1, paddingMode = 0;  // Default: bilinear, zeros padding
+    bool alignCorners = false;
+    PluginField const *fields = fc->fields;
+    
+    for (int i = 0; i < fc->nbFields; i++) {
+      char const *attrName = fields[i].name;
+      if (!strcmp(attrName, "interpolation_mode")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        mode = *(static_cast<int const *>(fields[i].data));
+      } else if (!strcmp(attrName, "padding_mode")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        paddingMode = *(static_cast<int const *>(fields[i].data));
+      } else if (!strcmp(attrName, "align_corners")) {
+        PLUGIN_VALIDATE(fields[i].type == PluginFieldType::kINT32);
+        alignCorners = (bool)(*(static_cast<int const *>(fields[i].data)));
+      }
+    }
+
+    // Create 2D grid sampler plugin with FIXED [-1, 1] coordinate range
+    auto *plugin = new GridSamplerPlugin(mode, paddingMode, alignCorners, false, false);
+    plugin->setPluginNamespace(mNamespace.c_str());  // ""
+    plugin->initialize();
+    return plugin;
+  } catch (std::exception const &e) {
+    caughtError(e);
+  }
+  return nullptr;
+}
+
+IPluginV2DynamicExt *GridSamplerMMDeployPluginCreatorEmpty::deserializePlugin(
+    const char *name, const void *serialData, size_t serialLength) noexcept {
+  try {
+    auto *plugin = new GridSamplerPlugin{serialData, serialLength, false, false};
+    plugin->setPluginNamespace(mNamespace.c_str());  // ""
+    plugin->initialize();
+    return plugin;
+  } catch (std::exception const &e) {
+    caughtError(e);
+  }
+  return nullptr;
+}
+
+// Register all plugin creators
 REGISTER_TENSORRT_PLUGIN(GridSampler2DPluginCreator);
 REGISTER_TENSORRT_PLUGIN(GridSampler2DPluginCreator2);
 REGISTER_TENSORRT_PLUGIN(GridSampler3DPluginCreator);
 REGISTER_TENSORRT_PLUGIN(GridSampler3DPluginCreator2);
+REGISTER_TENSORRT_PLUGIN(GridSamplerMMDeployPluginCreator);  // namespace="mmdeploy"
+REGISTER_TENSORRT_PLUGIN(GridSamplerMMDeployPluginCreatorEmpty);  // namespace="" - CRITICAL FIX!

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import build_conv_layer
-from mmcv.runner import BaseModule, force_fp32
+from third_party.bev_mmdet3d.models.compat import BaseModule, force_fp32
 from torch.cuda.amp.autocast_mode import autocast
 from torch.utils.checkpoint import checkpoint
 from mmdet.models.backbones.resnet import BasicBlock

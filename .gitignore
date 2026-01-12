@@ -1,3 +1,11 @@
+# Environment configuration
+.env
+
+# Python virtual environment
+venv/
+env/
+ENV/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -133,3 +141,5 @@ checkpoints/onnx/*
 checkpoints/pytorch/*
 checkpoints/tensorrt/*
 work_dirs/*
+backup_mmdeploy/mmdeploy
+mmdeploy_trt85

@@ -87,8 +87,28 @@ RUN cd /usr/local/bin && wget https://ngc.nvidia.com/downloads/ngccli_cat_linux.
 # Install PyTorch
 RUN pip3 install torch==1.12.1+cu116 torchvision==0.13.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116 --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install -r /tmp/requirements.txt
+RUN pip3 install matplotlib==3.5.1 \
+    netron \
+    numba==0.48.0 \
+    numpy==1.20.0 \
+    nuscenes_devkit==1.1.9 \
+    opencv_python==4.6.0.66 \
+    Pillow==9.5.0 \
+    pycocotools==2.0.4 \
+    pycuda==2022.1 \
+    pyquaternion==0.9.9 \
+    scipy==1.7.3 \
+    setuptools==59.8.0 \
+    Shapely==1.8.4 \
+    terminaltables==3.1.10 \
+    thop==0.1.1.post2209072238 \
+    tqdm==4.64.0 \
+    trimesh==2.35.39 \
+    nvidia-pyindex \
+    pytorch_quantization \
+    --extra-index-url https://pypi.ngc.nvidia.com \
+    --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
 
 ENV HTTPS_PROXY "http://127.0.0.1:20171"
 

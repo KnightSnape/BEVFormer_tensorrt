@@ -4,7 +4,10 @@ import torch.nn.functional as F
 import warnings
 from mmcv.cnn.bricks.registry import ATTENTION
 from mmcv.cnn.bricks.transformer import build_attention
-from mmcv.runner import force_fp32
+try:
+    from mmengine.runner import force_fp32
+except ImportError:
+    from mmcv.runner import force_fp32
 
 from mmcv.utils import ext_loader
 from ..utils import LINEAR_LAYERS, multi_scale_deformable_attn_pytorch

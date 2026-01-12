@@ -1,7 +1,12 @@
 from mmdet.models.builder import HEADS
 from mmdet.models.dense_heads.yolox_head import YOLOXHead
 
-from pytorch_quantization import nn as quant_nn
+try:
+    from pytorch_quantization import nn as quant_nn
+    HAS_QUANT = True
+except ImportError:
+    HAS_QUANT = False
+    quant_nn = None
 
 
 @HEADS.register_module()

@@ -1,0 +1,88 @@
+# BEVFormer TensorRT 10 environment
+# Based on Ubuntu 22.04 + CUDA 12.1 + TensorRT 10
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
+
+# Set non-interactive frontend for apt
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install basic system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    vim \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    libopencv-dev \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Install PyTorch 2.1.0 + CUDA 12.1 (official wheels)
+RUN pip3 install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Install TensorRT 10.x
+# Note: TensorRT 10 packages may need to be downloaded manually or installed via NVIDIA APT
+# Option 1: download TensorRT-10.x.x deb packages from NVIDIA
+# Option 2: use the NVIDIA APT repository
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub && \
+    echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64 /" > /etc/apt/sources.list.d/cuda.list && \
+    apt-get update || true
+
+# Install core Python dependencies
+RUN pip3 install \
+    numpy==1.24.3 \
+    opencv-python==4.8.1.78 \
+    pyyaml \
+    scipy \
+    terminaltables \
+    Pillow \
+    tqdm \
+    pycocotools \
+    yapf \
+    ninja \
+    onnx==1.15.0 \
+    onnxruntime==1.16.3 \
+    pycuda
+
+# Install mmcv (for PyTorch 2.1 + CUDA 12.1)
+# Note: mmcv 2.x is pure Python and does not require compilation (mmcv-full needs building)
+RUN pip3 install mmcv==2.1.0 || (pip3 install openmim && python3 -m mim install mmcv==2.1.0)
+
+# Install detection libraries
+RUN pip3 install mmdet==3.2.0 mmdet3d==1.3.0
+
+# Install mmdeploy (ensure compatibility with mmcv/mmdet versions)
+RUN pip3 install mmdeploy==1.3.1 mmdeploy-runtime==1.3.1
+
+# Set working directory
+WORKDIR /workspace
+
+# Configure CUDA and TensorRT environment variables
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV TENSORRT_DIR=/usr/src/tensorrt
+ENV LD_LIBRARY_PATH=${TENSORRT_DIR}/lib:${LD_LIBRARY_PATH}
+
+# Create required directories
+RUN mkdir -p /workspace/checkpoints/pytorch \
+    /workspace/checkpoints/onnx \
+    /workspace/checkpoints/tensorrt \
+    /workspace/data
+
+CMD ["/bin/bash"]
